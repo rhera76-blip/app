@@ -1,0 +1,27 @@
+const B = 'http://localhost:3000/api';
+(async () => {
+  const h = await (await fetch(B + '/health')).json(); console.log('health', h);
+  const email = 'smoke' + Date.now() + '@test.com';
+  let r = await fetch(B + '/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Smoke', email, password: 'secret123', businessName: 'Toko Smoke' }) });
+  const reg = await r.json(); console.log('register', r.status, reg.user?.email, reg.tenant?.plan);
+  const tok = reg.token;
+  r = await fetch(B + '/chatbots', { headers: { Authorization: 'Bearer ' + tok } });
+  const bots = await r.json(); console.log('bots', r.status, bots.length, bots[0]?.name);
+  const botId = bots[0].id;
+  r = await fetch(B + '/chatbots/' + botId, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ knowledgeBase: [{ title: 'Jam buka', content: 'Toko buka Senin-Sabtu 09.00-21.00 WIB. Minggu tutup.' }], allowedDomains: ['example.com', 'https://www.tokosmoke.id'] }) });
+  const upd = await r.json(); console.log('update', r.status, upd.allowedDomains, upd.knowledgeBase?.length);
+  r = await fetch(B + '/v1/bot/' + botId + '/config?origin=https://evil.com'); console.log('config evil', r.status, (await r.json()).error);
+  r = await fetch(B + '/v1/bot/' + botId + '/config', { headers: { Origin: 'https://www.example.com' } }); console.log('config ok', r.status, (await r.json()).name);
+  r = await fetch(B + '/v1/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://example.com' }, body: JSON.stringify({ botId, message: 'Jam berapa toko buka hari Minggu?' }) });
+  console.log('chat status', r.status, r.headers.get('content-type'));
+  const txt = await r.text(); console.log(txt.slice(0, 200), '...', txt.slice(-160));
+  r = await fetch(B + '/tenant', { headers: { Authorization: 'Bearer ' + tok } }); const t = await r.json(); console.log('usage', t.messagesUsed, t.quotaRemaining);
+  r = await fetch(B + '/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ plan: 'pro' }) });
+  const pay = await r.json(); console.log('checkout', r.status, pay.reference, pay.status);
+  r = await fetch(B + '/billing/payments/' + pay.id + '/simulate', { method: 'POST', headers: { Authorization: 'Bearer ' + tok } });
+  const sim = await r.json(); console.log('simulate', r.status, sim.payment?.status, sim.tenant?.plan, sim.tenant?.planExpiresAt);
+  r = await fetch(B + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@babehchatin.com', password: 'Admin123!' }) });
+  const adm = await r.json(); console.log('admin login', r.status, adm.user?.role);
+  r = await fetch(B + '/admin/overview', { headers: { Authorization: 'Bearer ' + adm.token } }); const ov = await r.json(); console.log('overview', r.status, ov.totalTenants, ov.revenue);
+  r = await fetch(B + '/widget.js'); console.log('widget', r.status, r.headers.get('content-type'), (await r.text()).length);
+})().catch(e => console.error('ERR', e));
