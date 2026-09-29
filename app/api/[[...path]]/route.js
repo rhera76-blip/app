@@ -574,9 +574,13 @@ async function handleRoute(request, { params }) {
         }
         const expires = new Date(base.getTime() + p.durationDays * 86400000)
         
-        const $set = {}$set.plan = p.id
-        $set.planStartedAt = now.toISOString()$set.planExpiresAt = expires.toISOString()
-        $set.status = 'active'$set.updatedAt = now.toISOString()
+        const $set = {
+          plan: p.id,
+          planStartedAt: now.toISOString(),
+          planExpiresAt: expires.toISOString(),
+          status: 'active',
+          updatedAt: now.toISOString()
+        }
 
         await db.collection('tenants').updateOne({ id: payment.tenantId }, { $set })
         const paidAt = now.toISOString()
