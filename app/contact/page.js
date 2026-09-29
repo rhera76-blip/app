@@ -13,8 +13,12 @@ export default function ContactPage() {
             <p className="text-base font-medium text-slate-900 mt-1">support@babehchatin.online</p>
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Layanan WhatsApp</h3>
-            <p className="text-base font-medium text-slate-900 mt-1">+62 812-3456-7890</p>
+            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Telegram Resmi</h3>
+            <p className="text-base font-medium text-slate-900 mt-1">
+              <a href="https://t.me/babehchatin" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                @babehchatin
+              </a>
+            </p>
           </div>
         </div>
         <div className="border-t pt-4">
@@ -24,7 +28,7 @@ export default function ContactPage() {
       </div>
 
       <p className="text-sm text-slate-500">
-        Kami berupaya merespons setiap pertanyaan dan tiket dukungan yang masuk dalam kurun waktu maksimal 1x24 jam pada hari kerja.
+        Anda juga dapat menghubungi kami secara langsung melalui akun Telegram di atas untuk respons yang lebih cepat.
       </p>
     </main>
   )
