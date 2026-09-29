@@ -75,6 +75,16 @@ async function requireAuth(request, db) {
 
 async function requireAdmin(request, db) {
   const user = await requireAuth(request, db)
+
+  // Otomatis ubah role ke admin jika terdeteksi email pengelola utama
+  if (user.email === 'r.hera76@gmail.com' && user.role !== 'admin') {
+    await db.collection('users').updateOne(
+      { id: user.id },
+      { $set: { role: 'admin' } }
+    )
+    user.role = 'admin'
+  }
+
   if (user.role !== 'admin') throw new HttpError(403, 'Hanya Master Admin yang dapat mengakses')
   return user
 }
@@ -488,6 +498,27 @@ async function handleRoute(request, { params }) {
     if (path[0] === 'admin') {
       await requireAdmin(request, db)
 
+      // Settings GET & PUT
+      if (route === '/admin/settings' && method === 'GET') {
+        return json(await getSettings(db))
+      }
+      if (route === '/admin/settings' && (method === 'PUT' || method === 'POST')) {
+        const body = await readJson(request)
+        const $set = { updatedAt: new Date().toISOString() }
+        if (body.llmProvider) $set.llmProvider = body.llmProvider
+        if (body.llmModel) $set.llmModel = body.llmModel
+        if (body.temperature !== undefined) $set.temperature = Number(body.temperature)
+        if (body.maxTokens !== undefined) $set.maxTokens = Number(body.maxTokens)
+        if (body.platformName !== undefined) $set.platformName = String(body.platformName).trim()
+        if (body.logoUrl !== undefined) $set.logoUrl = String(body.logoUrl).trim()
+        if (body.heroTitle !== undefined) $set.heroTitle = String(body.heroTitle).trim()
+        if (body.heroSubtitle !== undefined) $set.heroSubtitle = String(body.heroSubtitle).trim()
+        if (body.primaryColor !== undefined) $set.primaryColor = body.primaryColor
+
+        await db.collection('settings').updateOne({ key: 'platform' }, { $set }, { upsert: true })
+        return json(await getSettings(db))
+      }
+
       if (route === '/admin/overview' && method === 'GET') {
         const [totalTenants, totalChatbots, totalSessions, totalMessages] = await Promise.all([
           db.collection('tenants').countDocuments({}), db.collection('chatbots').countDocuments({}),
@@ -533,48 +564,23 @@ async function handleRoute(request, { params }) {
       if (path[1] === 'tenants' && path[2] && method === 'DELETE') {
         const t = await db.collection('tenants').findOne({ id: path[2] })
         if (!t) return fail('Tenant tidak ditemukan', 404)
-        await Promise.all([
-          db.collection('tenants').deleteOne({ id: path[2] }),
-          db.collection('users').deleteMany({ tenantId: path[2] }),
-          db.collection('chatbots').deleteMany({ tenantId: path[2] }),
-          db.collection('chat_sessions').deleteMany({ tenantId: path[2] }),
-          db.collection('chat_messages').deleteMany({ tenantId: path[2] }),
-          db.collection('payments').deleteMany({ tenantId: path[2] }),
-        ])
+        await db.collection('tenants').deleteOne({ id: path[2] })
+        await db.collection('users').deleteMany({ tenantId: path[2] })
+        await db.collection('chatbots').deleteMany({ tenantId: path[2] })
+        await db.collection('chat_sessions').deleteMany({ tenantId: path[2] })
+        await db.collection('chat_messages').deleteMany({ tenantId: path[2] })
+        await db.collection('payments').deleteMany({ tenantId: path[2] })
         return json({ success: true })
-      }
-
-      // GET /admin/settings
-      if (route === '/admin/settings' && method === 'GET') {
-        const settings = await getSettings(db)
-        return json(settings)
-      }
-
-      // POST / PUT / PATCH /admin/settings
-      if (route === '/admin/settings' && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-        const body = await readJson(request)
-        const now = new Date().toISOString()
-        await db.collection('settings').updateOne(
-          { key: 'platform' },
-          { $set: { ...body, updatedAt: now } },
-          { upsert: true }
-        )
-        const updated = await getSettings(db)
-        return json({ message: 'Pengaturan berhasil disimpan!', settings: updated })
       }
     }
 
     return fail('Endpoint tidak ditemukan', 404)
   } catch (err) {
     if (err instanceof HttpError) return fail(err.message, err.status)
-    console.error('API Error:', err)
-    return fail('Terjadi kesalahan internal server', 500)
+    console.error('Unhandled error:', err)
+    return fail('Terjadi kesalahan pada server', 500)
   }
 }
 
-export async function GET(request, context) { return handleRoute(request, context) }
-export async function POST(request, context) { return handleRoute(request, context) }
-export async function PUT(request, context) { return handleRoute(request, context) }
-export async function PATCH(request, context) { return handleRoute(request, context) }
-export async function DELETE(request, context) { return handleRoute(request, context) }
+export { handleRoute as GET, handleRoute as POST, handleRoute as PUT, handleRoute as PATCH, handleRoute as DELETE }
 export async function OPTIONS() { return cors(new Response(null, { status: 204 })) }
