@@ -258,8 +258,33 @@ function sanitizeChatbotInput(body, existing = {}) {
   return out
 }
 
+export async function GET(request, context) {
+  return handleRoute(request, context)
+}
+
+export async function POST(request, context) {
+  return handleRoute(request, context)
+}
+
+export async function PUT(request, context) {
+  return handleRoute(request, context)
+}
+
+export async function DELETE(request, context) {
+  return handleRoute(request, context)
+}
+
+export async function PATCH(request, context) {
+  return handleRoute(request, context)
+}
+
+export async function OPTIONS() {
+  return cors(new NextResponse(null, { status: 204 }))
+}
+
 async function handleRoute(request, { params }) {
-  const { path = [] } = await params
+  const resolvedParams = await params
+  const path = resolvedParams?.path || []
   const route = `/${path.join('/')}`
   const method = request.method
   const url = new URL(request.url)
@@ -446,15 +471,12 @@ async function handleRoute(request, { params }) {
       const now = new Date()
       const merchantRef = 'INV-' + now.getTime()
       const amount = plan.price
-      const method_ = body.method === 'BANK_TRANSFER' ? 'BR' : 'QRIS' // Kode payment method TriPay (sesuaikan jika perlu, misal QRIS atau BCA)
+      const method_ = body.method === 'BANK_TRANSFER' ? 'BR' : 'QRIS'
 
-      // Signature Tripay: hmac-sha256 dari merchantCode + merchantRef + amount
       const signature = crypto
         .createHmac('sha256', privateKey)
         .update(merchantCode + merchantRef + amount)
         .digest('hex')
-
-      const tenant = await db.collection('tenants').findOne({ id: user.tenantId })
 
       const tripayPayload = {
         method: method_,
@@ -470,11 +492,10 @@ async function handleRoute(request, { params }) {
             quantity: 1,
           }
         ],
-        expired_time: Math.floor(Date.now() / 1000) + (24 * 3600), // 24 jam
+        expired_time: Math.floor(Date.now() / 1000) + (24 * 3600),
         signature: signature
       }
 
-      // Gunakan URL sandbox Tripay (ganti ke https://tripay.co.id/api/merchant/closed-transaction/create untuk production)
       const tripayUrl = 'https://tripay.co.id/api-sandbox/merchant/closed-transaction/create'
 
       const tripayRes = await fetch(tripayUrl, {
@@ -486,7 +507,13 @@ async function handleRoute(request, { params }) {
         body: JSON.stringify(tripayPayload)
       })
 
-      const tripayData = await tripayRes.json()
+      const textRes = await tripayRes.text()
+      let tripayData
+      try {
+        tripayData = JSON.parse(textRes)
+      } catch {
+        return fail(`Gagal mengurai respons dari TriPay: ${textRes.slice(0, 100)}`, 500)
+      }
 
       if (!tripayData.success) {
         return fail(`Gagal membuat transaksi TriPay: ${tripayData.message || 'Unknown error'}`, 400)
@@ -502,7 +529,7 @@ async function handleRoute(request, { params }) {
         amount: amount,
         fee: resData.total_fee || 0,
         total: resData.amount || amount,
-        method: body.method,
+        method: body.method || 'QRIS',
         methodName: resData.payment_name || method_,
         reference: resData.reference,
         merchantRef: merchantRef,
@@ -530,7 +557,6 @@ async function handleRoute(request, { params }) {
       if (!payment) return fail('Pembayaran tidak ditemukan', 404)
       if (method === 'GET' && !path[3]) return json(clean(payment))
       
-      // Tombol simulasi dihapus/dinonaktifkan pada mode live, atau dibiarkan cek status ke tripay
       if (path[3] === 'simulate' && method === 'POST') {
         return fail('Simulasi manual dinonaktifkan karena menggunakan TriPay Live/Sandbox asli.', 400)
       }
@@ -607,42 +633,60 @@ async function handleRoute(request, { params }) {
         const revenueThisMonth = paid.filter((p) => (p.paidAt || '').startsWith(mk)).reduce((s, p) => s + (p.total || 0), 0)
         const byPlan = {}
         for (const p of PLAN_LIST) byPlan[p.id] = await db.collection('tenants').countDocuments({ plan: p.id })
-        const today = new Date(); today.setHours(0, 0, 0, 0)
-        const messagesToday = await db.collection('chat_messages').countDocuments({ role: 'user', createdAt: { $gte: today.toISOString() } })
-        const recentTenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(5).toArray())
-        const recentPayments = cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(5).toArray())
-        return json({ totalTenants, totalChatbots, totalSessions, totalMessages, messagesToday, activePaid, revenue, revenueThisMonth, byPlan, recentTenants, recentPayments })
+        return json({ totalTenants, totalChatbots, totalSessions, totalMessages, activePaid, revenue, revenueThisMonth, byPlan })
       }
 
       if (route === '/admin/tenants' && method === 'GET') {
         const tenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).toArray())
-        const users = await db.collection('users').find({ role: 'tenant' }).project({ id: 1, email: 1, name: 1, tenantId: 1 }).toArray()
-        const botCounts = await db.collection('chatbots').aggregate([{ $group: { _id: '$tenantId', n: {$sum: 1 } } }]).toArray()
-        const bc = Object.fromEntries(botCounts.map((b) => [b._id, b.n]))
-        return json(tenants.map((t) => { const owner = users.find((u) => u.id === t.ownerUserId); return { ...t, ownerEmail: owner?.email, ownerName: owner?.name, chatbotCount: bc[t.id] || 0, planDetails: getPlan(t.plan) } }))
+        const users = cleanMany(await db.collection('users').find({}).toArray())
+        const list = tenants.map((t) => ({ ...t, owner: users.find((u) => u.tenantId === t.id) || null, planDetails: getPlan(t.plan) }))
+        return json(list)
+      }
+      if (path[0] === 'admin' && path[1] === 'tenants' && path[2]) {
+        const tenantId = path[2]
+        const tenant = await db.collection('tenants').findOne({ id: tenantId })
+        if (!tenant) return fail('Tenant tidak ditemukan', 404)
+        if (method === 'DELETE') {
+          await Promise.all([
+            db.collection('tenants').deleteOne({ id: tenantId }),
+            db.collection('chatbots').deleteMany({ tenantId }),
+            db.collection('chat_sessions').deleteMany({ tenantId }),
+            db.collection('chat_messages').deleteMany({ tenantId }),
+            db.collection('payments').deleteMany({ tenantId }),
+            db.collection('users').deleteMany({ tenantId }),
+          ])
+          return json({ success: true })
+        }
+        if (method === 'PATCH' || method === 'PUT') {
+          const body = await readJson(request)
+          const $set = { updatedAt: new Date().toISOString() }
+          if (body.status) $set.status = body.status
+          if (body.plan) {
+            $set.plan = body.plan
+            const p = getPlan(body.plan)
+            const now = new Date()
+            $set.planStartedAt = now.toISOString()$set.planExpiresAt = new Date(now.getTime() + p.durationDays * 86400000).toISOString()
+          }
+          await db.collection('tenants').updateOne({ id: tenantId }, { $set })
+          return json(await getTenantWithUsage(db, tenantId))
+        }
       }
 
-      if (path[0] === 'admin' && path[1] === 'tenants' && path[2] && path[3] === 'status' && method === 'PATCH') {
-        const body = await readJson(request)
-        const status = body.status === 'suspended' ? 'suspended' : 'active'
-        await db.collection('tenants').updateOne({ id: path[2] }, { $set: { status, updatedAt: new Date().toISOString() } })
-        const tenant = await db.collection('tenants').findOne({ id: path[2] })
-        if (tenant?.ownerUserId) await db.collection('users').updateOne({ id: tenant.ownerUserId }, { $set: { status } })
-        return json({ success: true, status })
+      if (route === '/admin/payments' && method === 'GET') {
+        return json(cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(100).toArray()))
+      }
+      if (path[0] === 'admin' && path[1] === 'payments' && path[2] && path[3] === 'approve' && method === 'POST') {
+        const payment = await db.collection('payments').findOne({ id: path[2] })
+        if (!payment) return fail('Pembayaran tidak ditemukan', 404)
+        const updated = await processPaidPayment(db, clean(payment))
+        return json(updated)
       }
     }
 
-    return fail('Endpoint tidak ditemukan', 404)
+    return fail(`Endpoint ${route} tidak ditemukan (${method})`, 404)
   } catch (err) {
     if (err instanceof HttpError) return fail(err.message, err.status)
     console.error('API Error:', err)
-    return fail('Terjadi kesalahan pada server: ' + err.message, 500)
+    return fail(err.message || 'Terjadi kesalahan pada server', 500)
   }
 }
-
-export function GET(request, context) { return handleRoute(request, context) }
-export function POST(request, context) { return handleRoute(request, context) }
-export function PUT(request, context) { return handleRoute(request, context) }
-export function DELETE(request, context) { return handleRoute(request, context) }
-export function PATCH(request, context) { return handleRoute(request, context) }
-export function OPTIONS() { return cors(new NextResponse(null, { status: 204 })) }
