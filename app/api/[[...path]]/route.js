@@ -144,10 +144,19 @@ async function processPaidPayment(db, payment) {
   const tenant = await db.collection('tenants').findOne({ id: payment.tenantId })
   const now = new Date()
   let base = now
-  if (tenant && tenant.plan === plan.id && tenant.planExpiresAt && new Date(tenant.planExpiresAt) > now) base = new Date(tenant.planExpiresAt)
+  if (tenant && tenant.plan === plan.id && tenant.planExpiresAt && new Date(tenant.planExpiresAt) > now) {
+    base = new Date(tenant.planExpiresAt)
+  }
   const expires = new Date(base.getTime() + plan.durationDays * 86400000)
+  
   await db.collection('tenants').updateOne({ id: payment.tenantId }, {
-    $set: { plan: plan.id, planStartedAt: now.toISOString(), planExpiresAt: expires.toISOString(), status: 'active', updatedAt: now.toISOString() },
+    $set: {
+      plan: plan.id,
+      planStartedAt: now.toISOString(),
+      planExpiresAt: expires.toISOString(),
+      status: 'active',
+      updatedAt: now.toISOString()
+    },
   })
   const paidAt = now.toISOString()
   await db.collection('payments').updateOne({ id: payment.id }, { $set: { status: 'PAID', paidAt } })
