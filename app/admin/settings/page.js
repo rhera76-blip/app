@@ -3,16 +3,27 @@
 import { useState, useEffect } from 'react'
 import { Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
+// Helper untuk mengambil token dari localStorage atau Cookie
+function getAuthToken() {
+  if (typeof window === 'undefined') return ''
+  let token = localStorage.getItem('token') || localStorage.getItem('auth_token') || ''
+  if (!token) {
+    const match = document.cookie.match(/(?:^|; )token=([^;]*)/)
+    if (match) token = decodeURIComponent(match[1])
+  }
+  return token
+}
+
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
 
   const [form, setForm] = useState({
-    platformName: '',
+    platformName: 'BABEHCHATin',
     logoUrl: '',
-    heroTitle: '',
-    heroSubtitle: '',
+    heroTitle: 'Platform AI Chatbot Multi-Tenant Terbaik',
+    heroSubtitle: 'Otomatiskan layanan pelanggan dan percakapan bisnis Anda dengan AI',
     primaryColor: '#4f46e5',
     llmProvider: 'openai',
     llmModel: 'gpt-4o-mini',
@@ -28,9 +39,12 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const token = localStorage.getItem('token')
+        const token = getAuthToken()
         const res = await fetch('/api/admin/settings', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          }
         })
         const data = await res.json()
         if (res.ok && data) {
@@ -52,12 +66,12 @@ export default function AdminSettingsPage() {
     setMsg({ type: '', text: '' })
 
     try {
-      const token = localStorage.getItem('token')
+      const token = getAuthToken()
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(form)
       })
