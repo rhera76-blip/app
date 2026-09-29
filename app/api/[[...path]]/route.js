@@ -672,7 +672,8 @@ async function handleRoute(request, { params }) {
             $set.plan = body.plan
             const p = getPlan(body.plan)
             const now = new Date()
-            $set.planStartedAt = now.toISOString()$set.planExpiresAt = new Date(now.getTime() + p.durationDays * 86400000).toISOString()
+            $set.planStartedAt = now.toISOString()
+              $set.planExpiresAt = new Date(now.getTime() + p.durationDays * 86400000).toISOString()
           }
           await db.collection('tenants').updateOne({ id: tenantId }, { $set })
           return json(await getTenantWithUsage(db, tenantId))
