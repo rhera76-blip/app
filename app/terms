@@ -1,0 +1,20 @@
+export default function TermsPage() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-12 prose text-gray-800">
+      <h1 className="text-3xl font-bold mb-6">Ketentuan Layanan</h1>
+      <p>Terakhir diperbarui: September 2026</p>
+      
+      <h2>1. Ketentuan Umum</h2>
+      <p>Dengan mengakses dan menggunakan BABEHCHATin, Anda menyetujui untuk mematuhi seluruh syarat dan ketentuan yang berlaku di platform ini.</p>
+      
+      <h2>2. Berlangganan & Pembayaran</h2>
+      <p>Layanan berbasis sistem langganan bulanan. Pembayaran dilakukan melalui gateway resmi (TriPay) dengan opsi QRIS dan Transfer Bank. Masa aktif otomatis diperbarui sesuai paket yang dipilih.</p>
+      
+      <h2>3. Pembatalan & Refund</h2>
+      <p>Layanan yang sudah dibeli tidak dapat direfund. Anda dapat membatalkan atau mengubah paket berlangganan kapan saja sebelum periode berikutnya.</p>
+      
+      <h2>4. Batasan Penggunaan</h2>
+      <p>Pengguna dilarang menggunakan BABEHCHATin untuk tindakan illegal, penipuan, penyebaran malware, atau konten bermuatan SARA/kebencian.</p>
+    </div>
+  )
+}
