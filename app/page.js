@@ -195,10 +195,17 @@ function App() {
         </div>
       </section>
 
-      <footer className="border-t py-10">
+      {/* FOOTER */}
+      <footer className="border-t py-10 bg-white">
         <div className="container flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
           <Logo />
-          <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> &copy; {new Date().getFullYear()} BABEHCHATin. Platform AI Chatbot SaaS.</div>
+          <div className="flex flex-wrap items-center gap-6">
+            <Link href="/about" className="hover:text-foreground">Tentang Kami</Link>
+            <Link href="/privacy" className="hover:text-foreground">Kebijakan Privasi</Link>
+            <Link href="/terms" className="hover:text-foreground">Ketentuan Layanan</Link>
+            <Link href="/contact" className="hover:text-foreground">Kontak</Link>
+          </div>
+          <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> &copy; {new Date().getFullYear()} BABEHCHATin.</div>
         </div>
       </footer>
     </div>
