@@ -488,7 +488,6 @@ async function handleRoute(request, { params }) {
         signature: signature
       }
 
-      // Endpoint URL Production TriPay
       const tripayUrl = 'https://tripay.co.id/api/transaction/create'
 
       const tripayRes = await fetch(tripayUrl, {
@@ -627,36 +626,19 @@ async function handleRoute(request, { params }) {
         await db.collection('settings').updateOne({ key: 'platform' }, { $set }, { upsert: true })
         return json(await getSettings(db))
       }
+    }
 
-      if (route === '/admin/overview' && method === 'GET') {
-        const totalTenants = await db.collection('tenants').countDocuments({})
-        const totalChatbots = await db.collection('chatbots').countDocuments({})
-        const totalMessages = await db.collection('chat_messages').countDocuments({ role: 'user' })
-        const recentTenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(10).toArray())
-        const recentPayments = cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(10).toArray())
-        return json({ totalTenants, totalChatbots, totalMessages, recentTenants, recentPayments })
-      }
-
-      if (route === '/admin/tenants' && method === 'GET') {
-        const tenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).toArray())
-        const enriched = await Promise.all(tenants.map(async (t) => {
-          const owner = await db.collection('users').findOne({ tenantId: t.id, role: 'tenant' })
-          const botsCount = await db.collection('chatbots').countDocuments({ tenantId: t.id })
-          return { ...t, ownerEmail: owner?.email || '', botsCount }
-        }))
-        return json(enriched)
-      }
-
-      if (path[1] === 'tenants' && path[2] && path[3] === 'status' && method === 'POST') {
-        const body = await readJson(request)
-        const status = body.status === 'suspended' ? 'suspended' : 'active'
-        await db.collection('tenants').updateOne({ id: path[2] }, { $set: { status, updatedAt: new Date().toISOString() } })
-        await db.collection('users').updateMany({ tenantId: path[2] }, { $set: { status, updatedAt: new Date().toISOString() } })
-        return json({ success: true, status })
-      }
-
-      if (route === '/admin/payments' && method === 'GET') {
-        return json(cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(100).toArray()))
+    // ===== WhatsApp Integration API =====
+    if (route === '/whatsapp/connect' && method === 'POST') {
+      const user = await requireAuth(request, db)
+      const tenantId = user.tenantId
+      
+      try {
+        const { connectToWhatsApp } = require('@/lib/whatsapp-service')
+        await connectToWhatsApp(tenantId)
+        return json({ success: true, message: `Inisialisasi WhatsApp untuk tenant ${tenantId} berhasil dimulai.` })
+      } catch (e) {
+        return fail(`Gagal menghubungkan WhatsApp: ${e.message}`, 500)
       }
     }
 
@@ -664,6 +646,6 @@ async function handleRoute(request, { params }) {
   } catch (e) {
     if (e instanceof HttpError) return fail(e.message, e.status)
     console.error('API Error:', e)
-    return fail(e.message || 'Terjadi kesalahan internal server', 500)
+    return fail('Terjadi kesalahan internal server', 500)
   }
 }
