@@ -1,18 +1,31 @@
 import { NextResponse } from 'next/server'
-import { verifyToken } from '@/lib/auth'
+import jwt from 'jsonwebtoken'
 import dbConnect from '@/lib/db'
 import Settings from '@/models/Settings'
 import User from '@/models/User'
 
-// Helper untuk mengambil token dari Request Header atau Cookie
+const JWT_SECRET = process.env.JWT_SECRET || 'babehchatin-secret-key-2026'
+
+// CORS Headers Helper
+function getCorsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+  }
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: getCorsHeaders() })
+}
+
+// Helper Ekstraksi Token
 function getTokenFromRequest(req) {
-  // 1. Cek dari Header Authorization Bearer
   const authHeader = req.headers.get('authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.split(' ')[1]
   }
 
-  // 2. Cek dari Cookie Header Request
   const cookieHeader = req.headers.get('cookie') || ''
   const match = cookieHeader.match(/(?:^|;\s*)token=([^;]*)/) || cookieHeader.match(/(?:^|;\s*)auth_token=([^;]*)/)
   if (match) {
@@ -22,67 +35,84 @@ function getTokenFromRequest(req) {
   return null
 }
 
-// GET: Ambil Settings Platform
-export async function GET(req) {
+// Helper Otentikasi Admin
+async function requireAdmin(req) {
+  const token = getTokenFromRequest(req)
+  if (!token) return { error: 'Sesi tidak ditemukan. Silakan login kembali.', status: 401 }
+
   try {
+    const decoded = jwt.verify(token, JWT_SECRET)
     await dbConnect()
-    let settings = await Settings.findOne()
-    if (!settings) {
-      settings = await Settings.create({})
+    const user = await User.findById(decoded.userId)
+
+    if (!user) return { error: 'User tidak ditemukan.', status: 401 }
+
+    // Otomatis pastikan role SUPER_ADMIN untuk master email
+    if (user.email === 'r.hera76@gmail.com' && user.role !== 'SUPER_ADMIN') {
+      user.role = 'SUPER_ADMIN'
+      await user.save()
     }
-    return NextResponse.json(settings)
+
+    const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN'
+    if (!isAdmin) return { error: 'Akses ditolak. Hanya Master Admin yang diizinkan.', status: 403 }
+
+    return { user }
   } catch (err) {
-    console.error('GET Settings Error:', err)
-    return NextResponse.json({ error: 'Gagal mengambil data pengaturan' }, { status: 500 })
+    return { error: 'Sesi tidak valid atau telah kadaluarsa.', status: 401 }
   }
 }
 
-// POST: Simpan / Update Settings Platform
-export async function POST(req) {
-  try {
-    await dbConnect()
+// GET ROUTER
+export async function GET(req, { params }) {
+  const pathArr = params?.path || []
+  const path = pathArr.join('/')
 
-    const token = getTokenFromRequest(req)
-    if (!token) {
-      return NextResponse.json({ error: 'Sesi tidak ditemukan. Silakan login kembali.' }, { status: 401 })
+  await dbConnect()
+
+  // Endpoint: GET /api/admin/settings
+  if (path === 'admin/settings') {
+    try {
+      let settings = await Settings.findOne()
+      if (!settings) settings = await Settings.create({})
+      return NextResponse.json(settings, { headers: getCorsHeaders() })
+    } catch (err) {
+      return NextResponse.json({ error: err.message }, { status: 500, headers: getCorsHeaders() })
     }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: 'Sesi tidak valid atau telah kadaluarsa.' }, { status: 401 })
-    }
-
-    // Cek User dari Database
-    const user = await User.findById(decoded.userId)
-    if (!user) {
-      return NextResponse.json({ error: 'User tidak ditemukan.' }, { status: 401 })
-    }
-
-    // Verifikasi Akses Admin (Super Admin atau Admin)
-    const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN' || decoded.role === 'ADMIN'
-    
-    // Otomatis upgrade akun master jika email cocok
-    if (!isAdmin && user.email === 'r.hera76@gmail.com') {
-      user.role = 'SUPER_ADMIN'
-      await user.save()
-    } else if (!isAdmin) {
-      return NextResponse.json({ error: 'Akses ditolak. Hanya Master Admin yang diizinkan.' }, { status: 403 })
-    }
-
-    const body = await req.json()
-
-    let settings = await Settings.findOne()
-    if (!settings) {
-      settings = new Settings(body)
-    } else {
-      Object.assign(settings, body)
-    }
-
-    await settings.save()
-
-    return NextResponse.json({ message: 'Pengaturan berhasil disimpan!', settings })
-  } catch (err) {
-    console.error('POST Settings Error:', err)
-    return NextResponse.json({ error: err.message || 'Terjadi kesalahan server' }, { status: 500 })
   }
+
+  return NextResponse.json({ status: 'API Route Active', path }, { headers: getCorsHeaders() })
+}
+
+// POST ROUTER
+export async function POST(req, { params }) {
+  const pathArr = params?.path || []
+  const path = pathArr.join('/')
+
+  await dbConnect()
+
+  // Endpoint: POST /api/admin/settings
+  if (path === 'admin/settings') {
+    const auth = await requireAdmin(req)
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status, headers: getCorsHeaders() })
+    }
+
+    try {
+      const body = await req.json()
+      let settings = await Settings.findOne()
+
+      if (!settings) {
+        settings = new Settings(body)
+      } else {
+        Object.assign(settings, body)
+      }
+
+      await settings.save()
+      return NextResponse.json({ message: 'Pengaturan berhasil disimpan!', settings }, { headers: getCorsHeaders() })
+    } catch (err) {
+      return NextResponse.json({ error: err.message }, { status: 500, headers: getCorsHeaders() })
+    }
+  }
+
+  return NextResponse.json({ error: 'Endpoint tidak ditemukan' }, { status: 404, headers: getCorsHeaders() })
 }
