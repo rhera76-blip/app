@@ -1,0 +1,9 @@
+export default function AboutPage() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-12 prose text-gray-800">
+      <h1 className="text-3xl font-bold mb-6">Tentang BABEHCHATin</h1>
+      <p>BABEHCHATin adalah platform SaaS AI Chatbot B2B yang dirancang untuk membantu pemilik bisnis dan UMKM melayani pelanggan secara otomatis 24/7 di website mereka.</p>
+      <p>Dengan dukungan kecerdasan buatan, BABEHCHATin dapat mempelajari pengetahuan bisnis Anda dan menjawab pertanyaan pelanggan secara cerdas, cepat, dan profesional.</p>
+    </div>
+  )
+}
