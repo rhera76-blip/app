@@ -1,0 +1,19 @@
+export default function ContactPage() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-12 prose text-gray-800">
+      <h1 className="text-3xl font-bold mb-6">Hubungi Kami</h1>
+      <p className="mb-4">Tim support BABEHCHATin siap membantu pertanyaan dan kendala Anda.</p>
+      
+      <div className="bg-gray-50 p-6 rounded-lg border">
+        <p className="font-semibold">Email Support:</p>
+        <p className="mb-4">support@babehchatin.online / r.hera76@gmail.com</p>
+        
+        <p className="font-semibold">WhatsApp Support:</p>
+        <p className="mb-4">+62 812-3456-7890</p>
+        
+        <p className="font-semibold">Jam Operasional:</p>
+        <p>Senin - Jumat (09:00 - 17:00 WIB)</p>
+      </div>
+    </div>
+  )
+}
