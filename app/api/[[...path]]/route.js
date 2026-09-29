@@ -137,7 +137,7 @@ async function getSettings(db) {
   }
 }
 
-// ---------- billing (TriPay Live/Sandbox Integration) ----------
+// ---------- billing ----------
 async function processPaidPayment(db, payment) {
   if (payment.status === 'PAID') return payment
   const plan = getPlan(payment.plan)
@@ -258,29 +258,12 @@ function sanitizeChatbotInput(body, existing = {}) {
   return out
 }
 
-export async function GET(request, context) {
-  return handleRoute(request, context)
-}
-
-export async function POST(request, context) {
-  return handleRoute(request, context)
-}
-
-export async function PUT(request, context) {
-  return handleRoute(request, context)
-}
-
-export async function DELETE(request, context) {
-  return handleRoute(request, context)
-}
-
-export async function PATCH(request, context) {
-  return handleRoute(request, context)
-}
-
-export async function OPTIONS() {
-  return cors(new NextResponse(null, { status: 204 }))
-}
+export async function GET(request, context) { return handleRoute(request, context) }
+export async function POST(request, context) { return handleRoute(request, context) }
+export async function PUT(request, context) { return handleRoute(request, context) }
+export async function DELETE(request, context) { return handleRoute(request, context) }
+export async function PATCH(request, context) { return handleRoute(request, context) }
+export async function OPTIONS() { return cors(new NextResponse(null, { status: 204 })) }
 
 async function handleRoute(request, { params }) {
   const resolvedParams = await params
@@ -556,10 +539,6 @@ async function handleRoute(request, { params }) {
       const payment = await db.collection('payments').findOne({ id: path[2], tenantId: user.tenantId })
       if (!payment) return fail('Pembayaran tidak ditemukan', 404)
       if (method === 'GET' && !path[3]) return json(clean(payment))
-      
-      if (path[3] === 'simulate' && method === 'POST') {
-        return fail('Simulasi manual dinonaktifkan karena menggunakan TriPay Live/Sandbox asli.', 400)
-      }
     }
 
     // TriPay Webhook Handler
