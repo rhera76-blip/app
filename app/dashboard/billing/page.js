@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -11,41 +11,13 @@ import { PageHeader } from '@/components/app-shell'
 import { api, formatIDR, formatDate, formatDateTime, daysLeft } from '@/lib/api-client'
 import { useAuth } from '@/lib/auth-context'
 import { PLAN_LIST } from '@/lib/plans'
-import { Check, Crown, Loader2, QrCode, CheckCircle2, Clock, Copy } from 'lucide-react'
-
-// Deterministic mock QR pattern (visual only, MOCK payment gateway)
-function MockQR({ value = '', size = 220 }) {
-  const n = 29
-  const cells = useMemo(() => {
-    let h = 2166136261
-    const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return (h >>> 0) / 4294967296 }
-    for (let i = 0; i < value.length; i++) { h ^= value.charCodeAt(i); h = Math.imul(h, 16777619) }
-    const grid = []
-    const finder = (r, c) => (r >= 0 && r < 7 && c >= 0 && c < 7) && (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4))
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      let on
-      if (r < 8 && c < 8) on = finder(r, c)
-      else if (r < 8 && c >= n - 8) on = finder(r, c - (n - 7))
-      else if (r >= n - 8 && c < 8) on = finder(r - (n - 7), c)
-      else on = rnd() > 0.5
-      if (on) grid.push([r, c])
-    }
-    return grid
-  }, [value])
-  const s = size / n
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="bg-white rounded-lg" data-testid="mock-qr">
-      {cells.map(([r, c]) => <rect key={`${r}-${c}`} x={c * s} y={r * s} width={s} height={s} fill="#111" />)}
-    </svg>
-  )
-}
+import { Check, Crown, Loader2, QrCode, CheckCircle2, Clock, Copy, ExternalLink } from 'lucide-react'
 
 export default function BillingPage() {
   const { tenant, refresh } = useAuth()
   const [payments, setPayments] = useState([])
   const [busyPlan, setBusyPlan] = useState(null)
   const [payment, setPayment] = useState(null)
-  const [paying, setPaying] = useState(false)
   const [success, setSuccess] = useState(false)
 
   const loadPayments = () => api('/billing/payments').then(setPayments).catch(() => {})
@@ -58,18 +30,6 @@ export default function BillingPage() {
       setPayment(p); setSuccess(false)
       loadPayments()
     } catch (e) { toast.error(e.message) } finally { setBusyPlan(null) }
-  }
-
-  const simulatePaid = async () => {
-    if (!payment) return
-    setPaying(true)
-    try {
-      await new Promise((r) => setTimeout(r, 1200))
-      const res = await api(`/billing/payments/${payment.id}/simulate`, { method: 'POST' })
-      setPayment(res.payment); setSuccess(true)
-      await refresh(); loadPayments()
-      toast.success(`Pembayaran berhasil! Paket ${res.tenant.planDetails.name} aktif.`)
-    } catch (e) { toast.error(e.message) } finally { setPaying(false) }
   }
 
   const plan = tenant?.planDetails || {}
@@ -117,7 +77,6 @@ export default function BillingPage() {
             )
           })}
         </div>
-        <p className="text-xs text-muted-foreground mt-3">* Gateway pembayaran Tripay saat ini berjalan dalam mode <b>SIMULASI (mock)</b>. Tidak ada transaksi uang nyata.</p>
       </div>
 
       <Card>
@@ -150,10 +109,20 @@ export default function BillingPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><QrCode className="h-5 w-5 text-primary" /> Pembayaran QRIS</DialogTitle>
-                <DialogDescription>Scan QR di bawah dengan aplikasi e-wallet / mobile banking Anda.</DialogDescription>
+                <DialogDescription>Scan QR di bawah menggunakan aplikasi m-banking atau e-wallet (GoPay, OVO, Dana, BCA, QRIS All Payment).</DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center gap-4 py-2">
-                <div className="p-3 rounded-2xl border-2 border-dashed"><MockQR value={payment.qrString} /></div>
+                <div className="p-3 bg-white rounded-2xl border-2 shadow-sm flex items-center justify-center">
+                  {payment.qrString ? (
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payment.qrString)}`} 
+                      alt="QRIS Code" 
+                      className="w-[220px] h-[220px] rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-[220px] h-[220px] flex items-center justify-center text-muted-foreground text-sm">QR Code tidak tersedia</div>
+                  )}
+                </div>
                 <div className="text-center">
                   <div className="text-sm text-muted-foreground">Total Pembayaran</div>
                   <div className="text-3xl font-extrabold" data-testid="qris-amount">{formatIDR(payment.total)}</div>
@@ -164,10 +133,14 @@ export default function BillingPage() {
                   <div className="flex justify-between"><span className="text-muted-foreground">Invoice</span><span className="font-mono">{payment.merchantRef}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Batas waktu</span><span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatDateTime(payment.expiresAt)}</span></div>
                 </div>
-                <Badge variant="outline" className="text-amber-700 border-amber-300">Mode Simulasi (Mock Tripay)</Badge>
-                <Button className="w-full" onClick={simulatePaid} disabled={paying} data-testid="simulate-paid-btn">
-                  {paying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Memverifikasi pembayaran...</> : 'Simulasikan Pembayaran Berhasil'}
-                </Button>
+                {payment.payUrl && (
+                  <Button asChild variant="outline" className="w-full">
+                    <a href={payment.payUrl} target="_blank" rel="noopener noreferrer">
+                      Buka Halaman Checkout TriPay <ExternalLink className="h-4 w-4 ml-2" />
+                    </a>
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground text-center">Status pembayaran akan diperbarui secara otomatis setelah pembayaran berhasil diterima.</p>
               </div>
             </>
           )}
@@ -183,7 +156,7 @@ export default function BillingPage() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Dibayar</span><span>{formatDateTime(payment.paidAt)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-semibold">{formatIDR(payment.total)}</span></div>
               </div>
-              <Button className="w-full" onClick={() => setPayment(null)}>Selesai</Button>
+              <Button className="w-full" onClick={() => { setPayment(null); refresh(); loadPayments(); }}>Selesai</Button>
             </div>
           )}
         </DialogContent>
