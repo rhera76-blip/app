@@ -489,7 +489,7 @@ async function handleRoute(request, { params }) {
       }
 
       // Endpoint URL Production TriPay
-      const tripayUrl = 'https://tripay.co.id/api/merchant/closed-transaction/create'
+      const tripayUrl = 'https://tripay.co.id/api/transaction/create'
 
       const tripayRes = await fetch(tripayUrl, {
         method: 'POST',
