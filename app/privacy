@@ -1,1 +1,21 @@
 
+export default function PrivacyPage() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-12 prose text-gray-800">
+      <h1 className="text-3xl font-bold mb-6">Kebijakan Privasi</h1>
+      <p>Terakhir diperbarui: September 2026</p>
+      
+      <h2>1. Informasi yang Kami Kumpulkan</h2>
+      <p>BABEHCHATin mengumpulkan informasi akun seperti nama, email, dan nama bisnis saat Anda mendaftar. Kami juga memproses data percakapan yang masuk melalui widget chatbot untuk memberikan layanan AI.</p>
+      
+      <h2>2. Penggunaan Informasi</h2>
+      <p>Data yang dikumpulkan digunakan semata-mata untuk penyediaan layanan chatbot, peningkatan kualitas AI, dan pemrosesan transaksi pembayaran.</p>
+      
+      <h2>3. Keamanan Data</h2>
+      <p>Kami menerapkan standar keamanan terbaik untuk melindungi data pribadi dan basis pengetahuan (knowledge base) bisnis Anda.</p>
+      
+      <h2>4. Kontak</h2>
+      <p>Jika ada pertanyaan mengenai kebijakan privasi ini, hubungi kami di support@babehchatin.online.</p>
+    </div>
+  )
+}
