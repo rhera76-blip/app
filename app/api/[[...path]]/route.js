@@ -487,6 +487,7 @@ async function handleRoute(request, { params }) {
     // ===== Admin =====
     if (path[0] === 'admin') {
       await requireAdmin(request, db)
+
       if (route === '/admin/overview' && method === 'GET') {
         const [totalTenants, totalChatbots, totalSessions, totalMessages] = await Promise.all([
           db.collection('tenants').countDocuments({}), db.collection('chatbots').countDocuments({}),
@@ -506,6 +507,7 @@ async function handleRoute(request, { params }) {
         const recentPayments = cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(5).toArray())
         return json({ totalTenants, totalChatbots, totalSessions, totalMessages, messagesToday, activePaid, revenue, revenueThisMonth, byPlan, recentTenants, recentPayments })
       }
+
       if (route === '/admin/tenants' && method === 'GET') {
         const tenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).toArray())
         const users = await db.collection('users').find({ role: 'tenant' }).project({ id: 1, email: 1, name: 1, tenantId: 1 }).toArray()
@@ -513,6 +515,7 @@ async function handleRoute(request, { params }) {
         const bc = Object.fromEntries(botCounts.map((b) => [b._id, b.n]))
         return json(tenants.map((t) => { const owner = users.find((u) => u.id === t.ownerUserId); return { ...t, ownerEmail: owner?.email, ownerName: owner?.name, chatbotCount: bc[t.id] || 0, planDetails: getPlan(t.plan), expired: t.planExpiresAt ? new Date(t.planExpiresAt) < new Date() : false } }))
       }
+
       if (path[1] === 'tenants' && path[2] && (method === 'PUT' || method === 'PATCH')) {
         const body = await readJson(request)
         const $set = { updatedAt: new Date().toISOString() }
@@ -526,54 +529,45 @@ async function handleRoute(request, { params }) {
         if ($set.status) await db.collection('users').updateMany({ tenantId: path[2] }, { $set: { status:$set.status } })
         return json(await getTenantWithUsage(db, path[2]))
       }
+
       if (path[1] === 'tenants' && path[2] && method === 'DELETE') {
         const t = await db.collection('tenants').findOne({ id: path[2] })
         if (!t) return fail('Tenant tidak ditemukan', 404)
         await Promise.all([
-          db.collection('tenants').deleteOne({ id: t.id }), db.collection('users').deleteMany({ tenantId: t.id }), db.collection('chatbots').deleteMany({ tenantId: t.id }),
-          db.collection('chat_sessions').deleteMany({ tenantId: t.id }), db.collection('chat_messages').deleteMany({ tenantId: t.id }),
+          db.collection('tenants').deleteOne({ id: path[2] }),
+          db.collection('users').deleteMany({ tenantId: path[2] }),
+          db.collection('chatbots').deleteMany({ tenantId: path[2] }),
+          db.collection('chat_sessions').deleteMany({ tenantId: path[2] }),
+          db.collection('chat_messages').deleteMany({ tenantId: path[2] }),
+          db.collection('payments').deleteMany({ tenantId: path[2] }),
         ])
         return json({ success: true })
       }
-      if (route === '/admin/payments' && method === 'GET') {
-        const payments = cleanMany(await db.collection('payments').find({}).sort({ createdAt: -1 }).limit(200).toArray())
-        const tenants = await db.collection('tenants').find({}).project({ id: 1, name: 1 }).toArray()
-        const tn = Object.fromEntries(tenants.map((t) => [t.id, t.name]))
-        return json(payments.map((p) => ({ ...p, tenantName: tn[p.tenantId] || '-' })))
-      }
+
+      // GET /admin/settings
       if (route === '/admin/settings' && method === 'GET') {
-        return json(await getSettings(db))
+        const settings = await getSettings(db)
+        return json(settings)
       }
-      if (route === '/admin/settings' && (method === 'PUT' || method === 'POST')) {
+
+      // POST / PUT / PATCH /admin/settings
+      if (route === '/admin/settings' && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
         const body = await readJson(request)
-        const $set = { updatedAt: new Date().toISOString() }
-        if (body.llmProvider && ['openai', 'anthropic', 'google'].includes(body.llmProvider)) $set.llmProvider = body.llmProvider
-        if (body.llmModel) $set.llmModel = String(body.llmModel).trim()
-        if (body.temperature !== undefined) $set.temperature = Number(body.temperature)
-        if (body.maxTokens !== undefined) $set.maxTokens = Number(body.maxTokens)
-
-        // Branding & Display Settings
-        if (body.platformName !== undefined) $set.platformName = String(body.platformName).trim()
-        if (body.logoUrl !== undefined) $set.logoUrl = String(body.logoUrl).trim()
-        if (body.heroTitle !== undefined) $set.heroTitle = String(body.heroTitle).trim()
-        if (body.heroSubtitle !== undefined) $set.heroSubtitle = String(body.heroSubtitle).trim()
-        if (body.primaryColor !== undefined) $set.primaryColor = String(body.primaryColor).trim()
-
-        // Tripay Configuration
-        if (body.tripayMerchantCode !== undefined) $set.tripayMerchantCode = String(body.tripayMerchantCode).trim()
-        if (body.tripayApiKey !== undefined) $set.tripayApiKey = String(body.tripayApiKey).trim()
-        if (body.tripayPrivateKey !== undefined) $set.tripayPrivateKey = String(body.tripayPrivateKey).trim()
-        if (body.tripayMode !== undefined) $set.tripayMode = String(body.tripayMode).trim()
-
-        await db.collection('settings').updateOne({ key: 'platform' }, { $set }, { upsert: true })
-        return json(await getSettings(db))
+        const now = new Date().toISOString()
+        await db.collection('settings').updateOne(
+          { key: 'platform' },
+          { $set: { ...body, updatedAt: now } },
+          { upsert: true }
+        )
+        const updated = await getSettings(db)
+        return json({ message: 'Pengaturan berhasil disimpan!', settings: updated })
       }
     }
 
     return fail('Endpoint tidak ditemukan', 404)
   } catch (err) {
     if (err instanceof HttpError) return fail(err.message, err.status)
-    console.error('Unhandled API error:', err)
+    console.error('API Error:', err)
     return fail('Terjadi kesalahan internal server', 500)
   }
 }
