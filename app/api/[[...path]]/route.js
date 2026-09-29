@@ -95,8 +95,17 @@ async function ensureSeed(db) {
   const settings = await db.collection('settings').findOne({ key: 'platform' })
   if (!settings) {
     await db.collection('settings').insertOne({
-      key: 'platform', llmProvider: 'openai', llmModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.4, maxTokens: 800, platformName: 'BABEHCHATin', updatedAt: new Date().toISOString(),
+      key: 'platform',
+      llmProvider: 'openai',
+      llmModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.4,
+      maxTokens: 800,
+      platformName: 'BABEHCHATin',
+      logoUrl: '',
+      heroTitle: 'Layani Pelanggan 24/7 dengan AI Chatbot di Website Anda',
+      heroSubtitle: 'BABEHCHATin membantu bisnis Anda merespons pelanggan secara otomatis dan instan.',
+      primaryColor: '#4f46e5',
+      updatedAt: new Date().toISOString(),
     })
   }
   await Promise.all([
@@ -109,7 +118,18 @@ async function ensureSeed(db) {
 }
 
 async function getSettings(db) {
-  return clean(await db.collection('settings').findOne({ key: 'platform' })) || { llmProvider: 'openai', llmModel: 'gpt-4o-mini', temperature: 0.4, maxTokens: 800 }
+  const settings = await db.collection('settings').findOne({ key: 'platform' })
+  return clean(settings) || {
+    llmProvider: 'openai',
+    llmModel: 'gpt-4o-mini',
+    temperature: 0.4,
+    maxTokens: 800,
+    platformName: 'BABEHCHATin',
+    logoUrl: '',
+    heroTitle: 'Layani Pelanggan 24/7 dengan AI Chatbot di Website Anda',
+    heroSubtitle: 'BABEHCHATin membantu bisnis Anda merespons pelanggan secara otomatis.',
+    primaryColor: '#4f46e5',
+  }
 }
 
 // ---------- billing (MOCK Tripay) ----------
@@ -202,7 +222,7 @@ async function handlePublicChat(request, db) {
       try {
         const doneAt = new Date().toISOString()
         if (full) await db.collection('chat_messages').insertOne({ id: uuidv4(), sessionId, chatbotId: botId, tenantId: chatbot.tenantId, role: 'assistant', content: full, createdAt: doneAt })
-        await db.collection('chat_sessions').updateOne({ id: sessionId }, { $set: { lastMessageAt: doneAt, lastMessage: message.slice(0, 120) }, $inc: { messageCount: 1 } })
+        await db.collection('chat_sessions').updateOne({ id: sessionId }, { $set: { lastMessageAt: doneAt, lastMessage: message.slice(0, 120) },$inc: { messageCount: 1 } })
         await db.collection('tenants').updateOne({ id: chatbot.tenantId }, { $inc: { messagesUsed: 1 } })
         await db.collection('chatbots').updateOne({ id: botId }, { $inc: { totalMessages: 1 } })
       } catch (e) { console.error('persist error', e.message) }
@@ -247,6 +267,18 @@ async function handleRoute(request, { params }) {
 
     // ===== Health =====
     if ((route === '/' || route === '/root' || route === '/health') && method === 'GET') return json({ status: 'ok', app: 'BABEHCHATin API' })
+
+    // ===== Public Platform Settings =====
+    if (route === '/settings/public' && method === 'GET') {
+      const settings = await getSettings(db)
+      return json({
+        platformName: settings.platformName || 'BABEHCHATin',
+        logoUrl: settings.logoUrl || '',
+        heroTitle: settings.heroTitle || 'Layani Pelanggan 24/7 dengan AI Chatbot di Website Anda',
+        heroSubtitle: settings.heroSubtitle || 'BABEHCHATin membantu bisnis Anda merespons pelanggan secara otomatis.',
+        primaryColor: settings.primaryColor || '#4f46e5',
+      })
+    }
 
     // ===== Widget script (public) =====
     if (route === '/widget.js' && method === 'GET') {
@@ -461,7 +493,7 @@ async function handleRoute(request, { params }) {
           db.collection('chat_sessions').countDocuments({}), db.collection('chat_messages').countDocuments({ role: 'user' }),
         ])
         const nowIso = new Date().toISOString()
-        const activePaid = await db.collection('tenants').countDocuments({ plan: { $ne: 'trial' }, planExpiresAt: { $gt: nowIso }, status: 'active' })
+        const activePaid = await db.collection('tenants').countDocuments({ plan: { $ne: 'trial' }, planExpiresAt: {$gt: nowIso }, status: 'active' })
         const paid = await db.collection('payments').find({ status: 'PAID' }).toArray()
         const revenue = paid.reduce((s, p) => s + (p.total || 0), 0)
         const mk = monthKey()
@@ -477,7 +509,7 @@ async function handleRoute(request, { params }) {
       if (route === '/admin/tenants' && method === 'GET') {
         const tenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).toArray())
         const users = await db.collection('users').find({ role: 'tenant' }).project({ id: 1, email: 1, name: 1, tenantId: 1 }).toArray()
-        const botCounts = await db.collection('chatbots').aggregate([{ $group: { _id: '$tenantId', n: { $sum: 1 } } }]).toArray()
+        const botCounts = await db.collection('chatbots').aggregate([{ $group: { _id: '$tenantId', n: {$sum: 1 } } }]).toArray()
         const bc = Object.fromEntries(botCounts.map((b) => [b._id, b.n]))
         return json(tenants.map((t) => { const owner = users.find((u) => u.id === t.ownerUserId); return { ...t, ownerEmail: owner?.email, ownerName: owner?.name, chatbotCount: bc[t.id] || 0, planDetails: getPlan(t.plan), expired: t.planExpiresAt ? new Date(t.planExpiresAt) < new Date() : false } }))
       }
@@ -491,7 +523,7 @@ async function handleRoute(request, { params }) {
         if (body.resetUsage) $set.messagesUsed = 0
         const r = await db.collection('tenants').updateOne({ id: path[2] }, { $set })
         if (!r.matchedCount) return fail('Tenant tidak ditemukan', 404)
-        if ($set.status) await db.collection('users').updateMany({ tenantId: path[2] }, { $set: { status: $set.status } })
+        if ($set.status) await db.collection('users').updateMany({ tenantId: path[2] }, { $set: { status:$set.status } })
         return json(await getTenantWithUsage(db, path[2]))
       }
       if (path[1] === 'tenants' && path[2] && method === 'DELETE') {
@@ -509,31 +541,46 @@ async function handleRoute(request, { params }) {
         const tn = Object.fromEntries(tenants.map((t) => [t.id, t.name]))
         return json(payments.map((p) => ({ ...p, tenantName: tn[p.tenantId] || '-' })))
       }
-      if (route === '/admin/settings' && method === 'GET') return json(await getSettings(db))
-      if (route === '/admin/settings' && method === 'PUT') {
+      if (route === '/admin/settings' && method === 'GET') {
+        return json(await getSettings(db))
+      }
+      if (route === '/admin/settings' && (method === 'PUT' || method === 'POST')) {
         const body = await readJson(request)
         const $set = { updatedAt: new Date().toISOString() }
-        if (body.llmProvider && ['openai', 'anthropic', 'gemini'].includes(body.llmProvider)) $set.llmProvider = body.llmProvider
-        if (body.llmModel) $set.llmModel = String(body.llmModel).trim().slice(0, 80)
-        if (body.temperature !== undefined) $set.temperature = Math.min(2, Math.max(0, Number(body.temperature) || 0))
-        if (body.maxTokens !== undefined) $set.maxTokens = Math.min(4000, Math.max(100, Number(body.maxTokens) || 800))
-        if (body.platformName) $set.platformName = String(body.platformName).slice(0, 60)
+        if (body.llmProvider && ['openai', 'anthropic', 'google'].includes(body.llmProvider)) $set.llmProvider = body.llmProvider
+        if (body.llmModel) $set.llmModel = String(body.llmModel).trim()
+        if (body.temperature !== undefined) $set.temperature = Number(body.temperature)
+        if (body.maxTokens !== undefined) $set.maxTokens = Number(body.maxTokens)
+
+        // Branding & Display Settings
+        if (body.platformName !== undefined) $set.platformName = String(body.platformName).trim()
+        if (body.logoUrl !== undefined) $set.logoUrl = String(body.logoUrl).trim()
+        if (body.heroTitle !== undefined) $set.heroTitle = String(body.heroTitle).trim()
+        if (body.heroSubtitle !== undefined) $set.heroSubtitle = String(body.heroSubtitle).trim()
+        if (body.primaryColor !== undefined) $set.primaryColor = String(body.primaryColor).trim()
+
+        // Tripay Configuration
+        if (body.tripayMerchantCode !== undefined) $set.tripayMerchantCode = String(body.tripayMerchantCode).trim()
+        if (body.tripayApiKey !== undefined) $set.tripayApiKey = String(body.tripayApiKey).trim()
+        if (body.tripayPrivateKey !== undefined) $set.tripayPrivateKey = String(body.tripayPrivateKey).trim()
+        if (body.tripayMode !== undefined) $set.tripayMode = String(body.tripayMode).trim()
+
         await db.collection('settings').updateOne({ key: 'platform' }, { $set }, { upsert: true })
         return json(await getSettings(db))
       }
     }
 
-    return fail(`Route ${route} not found`, 404)
-  } catch (error) {
-    if (error instanceof HttpError) return fail(error.message, error.status)
-    console.error('API Error:', error)
-    return fail('Internal server error', 500)
+    return fail('Endpoint tidak ditemukan', 404)
+  } catch (err) {
+    if (err instanceof HttpError) return fail(err.message, err.status)
+    console.error('Unhandled API error:', err)
+    return fail('Terjadi kesalahan internal server', 500)
   }
 }
 
-export async function OPTIONS() { return cors(new NextResponse(null, { status: 204 })) }
-export const GET = handleRoute
-export const POST = handleRoute
-export const PUT = handleRoute
-export const DELETE = handleRoute
-export const PATCH = handleRoute
+export async function GET(request, context) { return handleRoute(request, context) }
+export async function POST(request, context) { return handleRoute(request, context) }
+export async function PUT(request, context) { return handleRoute(request, context) }
+export async function PATCH(request, context) { return handleRoute(request, context) }
+export async function DELETE(request, context) { return handleRoute(request, context) }
+export async function OPTIONS() { return cors(new Response(null, { status: 204 })) }
