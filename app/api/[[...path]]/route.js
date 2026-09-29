@@ -565,7 +565,22 @@ async function handleRoute(request, { params }) {
       if (!payment) return fail('Pembayaran tidak ditemukan', 404)
 
       if (status === 'PAID') {
-        await processPaidPayment(db, clean(payment))
+        const p = getPlan(payment.plan)
+        const now = new Date()
+        const tenant = await db.collection('tenants').findOne({ id: payment.tenantId })
+        let base = now
+        if (tenant && tenant.plan === p.id && tenant.planExpiresAt && new Date(tenant.planExpiresAt) > now) {
+          base = new Date(tenant.planExpiresAt)
+        }
+        const expires = new Date(base.getTime() + p.durationDays * 86400000)
+        
+        const $set = {}$set.plan = p.id
+        $set.planStartedAt = now.toISOString()$set.planExpiresAt = expires.toISOString()
+        $set.status = 'active'$set.updatedAt = now.toISOString()
+
+        await db.collection('tenants').updateOne({ id: payment.tenantId }, { $set })
+        const paidAt = now.toISOString()
+        await db.collection('payments').updateOne({ id: payment.id }, { $set: { status: 'PAID', paidAt } })
         return json({ success: true, status: 'PAID' })
       }
       if (['EXPIRED', 'FAILED', 'REFUND'].includes(status)) {
