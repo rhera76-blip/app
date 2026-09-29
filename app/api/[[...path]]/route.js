@@ -3,21 +3,20 @@ import { verifyToken } from '@/lib/auth'
 import dbConnect from '@/lib/db'
 import Settings from '@/models/Settings'
 import User from '@/models/User'
-import { cookies } from 'next/headers'
 
 // Helper untuk mengambil token dari Request Header atau Cookie
-async function getTokenFromRequest(req) {
+function getTokenFromRequest(req) {
   // 1. Cek dari Header Authorization Bearer
   const authHeader = req.headers.get('authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.split(' ')[1]
   }
 
-  // 2. Cek dari Cookie
-  const cookieStore = await cookies()
-  const tokenCookie = cookieStore.get('token') || cookieStore.get('auth_token')
-  if (tokenCookie) {
-    return tokenCookie.value
+  // 2. Cek dari Cookie Header Request
+  const cookieHeader = req.headers.get('cookie') || ''
+  const match = cookieHeader.match(/(?:^|;\s*)token=([^;]*)/) || cookieHeader.match(/(?:^|;\s*)auth_token=([^;]*)/)
+  if (match) {
+    return decodeURIComponent(match[1])
   }
 
   return null
@@ -43,7 +42,7 @@ export async function POST(req) {
   try {
     await dbConnect()
 
-    const token = await getTokenFromRequest(req)
+    const token = getTokenFromRequest(req)
     if (!token) {
       return NextResponse.json({ error: 'Sesi tidak ditemukan. Silakan login kembali.' }, { status: 401 })
     }
@@ -62,7 +61,7 @@ export async function POST(req) {
     // Verifikasi Akses Admin (Super Admin atau Admin)
     const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN' || decoded.role === 'ADMIN'
     
-    // Jika role di DB belum diset sebagai admin, otomatis upgrade akun saat ini jika email cocok
+    // Otomatis upgrade akun master jika email cocok
     if (!isAdmin && user.email === 'r.hera76@gmail.com') {
       user.role = 'SUPER_ADMIN'
       await user.save()
