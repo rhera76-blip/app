@@ -1,65 +1,201 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { PageHeader } from '@/components/app-shell'
-import { api } from '@/lib/api-client'
-import { Loader2, Save, Cpu, KeyRound } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
-const MODELS = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-5'],
-  anthropic: ['claude-sonnet-4-6', 'claude-3-5-haiku-20241022'],
-  gemini: ['gemini-2.0-flash', 'gemini-1.5-pro'],
-}
+export default function AdminSettingsPage() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState({ type: '', text: '' })
 
-export default function AdminSettings() {
-  const [s, setS] = useState(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { api('/admin/settings').then(setS).catch((e) => toast.error(e.message)) }, [])
-  if (!s) return <Skeleton className="h-96" />
+  const [form, setForm] = useState({
+    platformName: '',
+    logoUrl: '',
+    heroTitle: '',
+    heroSubtitle: '',
+    primaryColor: '#4f46e5',
+    llmProvider: 'openai',
+    llmModel: 'gpt-4o-mini',
+    temperature: 0.4,
+    maxTokens: 800,
+    tripayMerchantCode: '',
+    tripayApiKey: '',
+    tripayPrivateKey: '',
+    tripayMode: 'sandbox'
+  })
 
-  const save = async (e) => {
-    e.preventDefault(); setBusy(true)
-    try { setS(await api('/admin/settings', { method: 'PUT', body: s })); toast.success('Konfigurasi AI disimpan') } catch (err) { toast.error(err.message) } finally { setBusy(false) }
+  // 1. Ambil Data Settings dari API
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const token = localStorage.getItem('token')
+        const res = await fetch('/api/admin/settings', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const data = await res.json()
+        if (res.ok && data) {
+          setForm((prev) => ({ ...prev, ...data }))
+        }
+      } catch (err) {
+        console.error('Gagal memuat pengaturan:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSettings()
+  }, [])
+
+  // 2. Simpan Data Settings ke API
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setMsg({ type: '', text: '' })
+
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(form)
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Gagal menyimpan pengaturan')
+
+      setMsg({ type: 'success', text: 'Pengaturan berhasil disimpan!' })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <PageHeader title="Konfigurasi AI" description="Pengaturan model LLM global yang digunakan semua chatbot tenant." />
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Cpu className="h-4 w-4" />Model LLM</CardTitle><CardDescription>Semua permintaan dirutekan melalui Emergent Universal Key.</CardDescription></CardHeader>
-        <CardContent>
-          <form onSubmit={save} className="space-y-5">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Provider</Label>
-                <Select value={s.llmProvider} onValueChange={(v) => setS({ ...s, llmProvider: v, llmModel: MODELS[v][0] })}><SelectTrigger data-testid="llm-provider-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="openai">OpenAI</SelectItem><SelectItem value="anthropic">Anthropic (Claude)</SelectItem><SelectItem value="gemini">Google Gemini</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>Model</Label>
-                <Select value={s.llmModel} onValueChange={(v) => setS({ ...s, llmModel: v })}><SelectTrigger data-testid="llm-model-select"><SelectValue /></SelectTrigger><SelectContent>{(MODELS[s.llmProvider] || []).map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}{!(MODELS[s.llmProvider] || []).includes(s.llmModel) && <SelectItem value={s.llmModel}>{s.llmModel}</SelectItem>}</SelectContent></Select></div>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Pengaturan Platform</h1>
+        <p className="text-sm text-gray-500">Kelola tampilan landing page, AI provider, dan konfigurasi Tripay.</p>
+      </div>
+
+      {msg.text && (
+        <div className={`p-4 rounded-lg flex items-center gap-2 ${msg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {msg.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          <span>{msg.text}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Branding & Tampilan */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+          <h2 className="text-lg font-semibold text-gray-800 border-b pb-2">Branding & Landing Page</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nama Platform</label>
+              <input
+                type="text"
+                value={form.platformName}
+                onChange={(e) => setForm({ ...form, platformName: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="BABEHCHATin"
+              />
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Temperature ({s.temperature})</Label><Input type="number" step="0.1" min="0" max="2" value={s.temperature} onChange={(e) => setS({ ...s, temperature: e.target.value })} data-testid="llm-temperature" /></div>
-              <div className="space-y-2"><Label>Max Tokens</Label><Input type="number" min="100" max="4000" value={s.maxTokens} onChange={(e) => setS({ ...s, maxTokens: e.target.value })} data-testid="llm-max-tokens" /></div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL Logo</label>
+              <input
+                type="text"
+                value={form.logoUrl}
+                onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="https://domain.com/logo.png"
+              />
             </div>
-            <div className="space-y-2"><Label>Nama Platform</Label><Input value={s.platformName || ''} onChange={(e) => setS({ ...s, platformName: e.target.value })} /></div>
-            <Button type="submit" disabled={busy} data-testid="llm-save-btn">{busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Simpan</Button>
-          </form>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><KeyRound className="h-4 w-4" />Kunci API & Gateway</CardTitle></CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <div className="flex justify-between border-b py-2"><span className="text-muted-foreground">LLM Key</span><span className="font-mono">Emergent Universal Key (sk-emergent-••••)</span></div>
-          <div className="flex justify-between border-b py-2"><span className="text-muted-foreground">Payment Gateway</span><span>Tripay — <b>Mode Simulasi</b></span></div>
-          <div className="flex justify-between py-2"><span className="text-muted-foreground">Webhook URL</span><span className="font-mono text-xs">/api/webhooks/tripay</span></div>
-          <p className="text-xs text-muted-foreground pt-2">Kunci disimpan di environment server dan tidak pernah dikirim ke browser.</p>
-        </CardContent>
-      </Card>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hero Title</label>
+            <input
+              type="text"
+              value={form.heroTitle}
+              onChange={(e) => setForm({ ...form, heroTitle: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hero Subtitle</label>
+            <textarea
+              rows={2}
+              value={form.heroSubtitle}
+              onChange={(e) => setForm({ ...form, heroSubtitle: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Tripay Payment Gateway */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+          <h2 className="text-lg font-semibold text-gray-800 border-b pb-2">Integrasi Tripay Payment Gateway</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Merchant Code</label>
+              <input
+                type="text"
+                value={form.tripayMerchantCode}
+                onChange={(e) => setForm({ ...form, tripayMerchantCode: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="T12345"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mode</label>
+              <select
+                value={form.tripayMode}
+                onChange={(e) => setForm({ ...form, tripayMode: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="sandbox">Sandbox (Testing)</option>
+                <option value="production">Production (Live)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+            <input
+              type="password"
+              value={form.tripayApiKey}
+              onChange={(e) => setForm({ ...form, tripayApiKey: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Private Key</label>
+            <input
+              type="password"
+              value={form.tripayPrivateKey}
+              onChange={(e) => setForm({ ...form, tripayPrivateKey: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all"
+        >
+          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+          <span>{saving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+        </button>
+      </form>
     </div>
   )
 }
