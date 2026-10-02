@@ -50,6 +50,7 @@ function domainAllowed(allowedDomains = [], origin) {
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
 async function getTenantWithUsage(db, tenantId) {
+  if (!tenantId) return null
   const tenant = await db.collection('tenants').findOne({ id: tenantId })
   if (!tenant) return null
   const mk = monthKey()
@@ -71,6 +72,12 @@ async function requireAuth(request, db) {
   const user = await db.collection('users').findOne({ id: payload.sub })
   if (!user) throw new HttpError(401, 'User tidak ditemukan')
   if (user.status === 'suspended') throw new HttpError(403, 'Akun Anda ditangguhkan')
+  return user
+}
+
+async function requireAdmin(request, db) {
+  const user = await requireAuth(request, db)
+  if (user.role !== 'admin') throw new HttpError(403, 'Akses khusus Administrator')
   return user
 }
 
@@ -519,6 +526,57 @@ async function handleRoute(request, context) {
         return json({ success: true, status })
       }
       return json({ success: true })
+    }
+
+    // ===== Master Admin API Endpoints =====
+    if (path[0] === 'admin') {
+      await requireAdmin(request, db)
+
+      if (route === '/admin/stats' && method === 'GET') {
+        const totalTenants = await db.collection('tenants').countDocuments({})
+        const totalChatbots = await db.collection('chatbots').countDocuments({})
+        const totalMessages = await db.collection('chat_messages').countDocuments({ role: 'user' })
+        const payments = cleanMany(await db.collection('payments').find({ status: 'PAID' }).toArray())
+        const totalRevenue = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0)
+        const recentTenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(10).toArray())
+        return json({ totalTenants, totalChatbots, totalMessages, totalRevenue, recentTenants })
+      }
+
+      if (route === '/admin/tenants' && method === 'GET') {
+        const tenants = cleanMany(await db.collection('tenants').find({}).sort({ createdAt: -1 }).toArray())
+        const enriched = await Promise.all(tenants.map(async (t) => {
+          const owner = await db.collection('users').findOne({ tenantId: t.id })
+          const botsCount = await db.collection('chatbots').countDocuments({ tenantId: t.id })
+          return { ...t, owner: owner ? publicUser(owner) : null, chatbotsCount: botsCount }
+        }))
+        return json(enriched)
+      }
+
+      if (path[1] === 'tenants' && path[2] && path[3] === 'status' && method === 'PATCH') {
+        const body = await readJson(request)
+        const newStatus = body.status === 'suspended' ? 'suspended' : 'active'
+        await db.collection('tenants').updateOne({ id: path[2] }, { $set: { status: newStatus, updatedAt: new Date().toISOString() } })
+        await db.collection('users').updateMany({ tenantId: path[2] }, { $set: { status: newStatus } })
+        return json({ success: true, status: newStatus })
+      }
+
+      if (route === '/admin/settings' && method === 'GET') {
+        return json(await getSettings(db))
+      }
+
+      if (route === '/admin/settings' && method === 'PUT') {
+        const body = await readJson(request)
+        const $set = {
+          platformName: String(body.platformName || 'BABEHCHATin').trim(),
+          logoUrl: String(body.logoUrl || '').trim(),
+          heroTitle: String(body.heroTitle || '').trim(),
+          heroSubtitle: String(body.heroSubtitle || '').trim(),
+          primaryColor: /^#[0-9a-fA-F]{6}$/.test(body.primaryColor) ? body.primaryColor : '#4f46e5',
+          updatedAt: new Date().toISOString(),
+        }
+        await db.collection('settings').updateOne({ key: 'platform' }, { $set }, { upsert: true })
+        return json(await getSettings(db))
+      }
     }
 
     return fail('Endpoint tidak ditemukan', 404)
